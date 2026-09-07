@@ -100,7 +100,7 @@ td{ padding:10px; border-bottom:1px solid var(--line-soft); }
 <script>
 /* ================= CONFIG ================= */
 // Dán URL /exec của Apps Script vào đây:
-const GAS_URL = "https://script.google.com/macros/s/AKfycbzPE-px6H1xjP8gxLCBWyGrZvd_lqGSsxE1dMvclL7zYQ6qC2Fu22nCfWwaF_kx9Fsj/exec";
+ const GAS_URL = "https://script.google.com/macros/s/AKfycbzPE-px6H1xjP8gxLCBWyGrZvd_lqGSsxE1dMvclL7zYQ6qC2Fu22nCfWwaF_kx9Fsj/exec";
 const DEFAULT_TEACHER_PIN = "1412";
 
 const SKILL_META = {
@@ -648,10 +648,29 @@ async function handleStartQuiz(){
   const name = document.getElementById("j_name").value.trim();
   const cls = document.getElementById("j_cls").value.trim();
   if(!name || !cls){ S.joinErr="Nhập đầy đủ họ tên và lớp nhé."; render(); return; }
-  const quiz = S.activeQuiz;
+  const quiz = shuffleQuizForAttempt(S.activeQuiz);
   S.quizPlay = { quiz, student:{name,cls}, idx:0, picked:null, answers:[], remaining: quiz.timeLimitMin?quiz.timeLimitMin*60:0, startedAt:Date.now(), timer:null, finished:false };
   S.view = "quiz"; render();
   if(quiz.timeLimitMin) startTimer();
+}
+
+// Tao 1 ban sao cua de voi thu tu CAU HOI va thu tu PHUONG AN duoc xao random,
+// de moi lan hoc sinh lam lai (vd sau khi da chua bai tren lop) se khong con dung
+// vi tri cau/dap an de chep lai may moc - buoc hoc sinh phai doc lai noi dung that.
+function shuffleQuizForAttempt(quiz){
+  function shuffleArray(arr){
+    const a = arr.slice();
+    for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+    return a;
+  }
+  const shuffledQuestions = shuffleArray(quiz.questions).map(q=>{
+    const optionIdx = q.options.map((_,i)=>i);
+    const shuffledIdx = shuffleArray(optionIdx);
+    const newOptions = shuffledIdx.map(i=>q.options[i]);
+    const newCorrectIndex = shuffledIdx.indexOf(q.correctIndex);
+    return { ...q, options:newOptions, correctIndex:newCorrectIndex };
+  });
+  return { ...quiz, questions:shuffledQuestions };
 }
 
 function startTimer(){
