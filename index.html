@@ -100,7 +100,7 @@ td{ padding:10px; border-bottom:1px solid var(--line-soft); }
 <script>
 /* ================= CONFIG ================= */
 // Dán URL /exec của Apps Script vào đây:
- const GAS_URL = "https://script.google.com/macros/s/AKfycbzPE-px6H1xjP8gxLCBWyGrZvd_lqGSsxE1dMvclL7zYQ6qC2Fu22nCfWwaF_kx9Fsj/exec";
+const GAS_URL = "PASTE_YOUR_NEW_TEST_APPS_SCRIPT_URL_HERE";
 const DEFAULT_TEACHER_PIN = "1412";
 
 const SKILL_META = {
@@ -119,6 +119,11 @@ function pctClass(p){ return p>=80?"pct-good":p>=50?"pct-mid":"pct-bad"; }
 function fmtTime(sec){ const m=String(Math.floor(sec/60)).padStart(2,"0"); const s=String(Math.floor(sec%60)).padStart(2,"0"); return m+":"+s; }
 function fmtDate(ts){ try{ return new Date(ts).toLocaleString("vi-VN",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}); }catch(e){ return ""; } }
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+// Nhu esc(), nhung giu lai dinh dang <b>/<u>/<i> don gian (do phan mem tao de tach ra tu file Word
+// goc, danh dau tu in dam/gach chan/in nghieng) de hoc sinh nhin thay dung dinh dang khi lam bai.
+function escKeepFormat(s){
+  return esc(s).replace(/&lt;(\/?)(b|u|i)&gt;/g, "<$1$2>");
+}
 function dateCodeBase(d){ const dd=String(d.getDate()).padStart(2,"0"); const mm=String(d.getMonth()+1).padStart(2,"0"); return dd+mm; }
 
 /* ================= BACKEND (Google Apps Script) ================= */
@@ -362,8 +367,8 @@ function viewPreview(){
       (i>0?'<hr class="hairline">':'') + '<div style="padding:14px 0">'
       + '<div style="display:flex;justify-content:space-between;margin-bottom:6px"><span class="sans" style="font-size:12px;color:var(--ink-faint);font-weight:700">CÂU '+(i+1)+'</span>'
       + '<span class="badge '+SKILL_META[qq.skill].badge+'">'+SKILL_META[qq.skill].label+'</span></div>'
-      + '<div style="font-size:15px;margin-bottom:8px">'+esc(qq.question)+'</div>'
-      + qq.options.map((o,oi)=>'<div class="sans" style="font-size:13.5px;padding:3px 0;color:'+(oi===qq.correctIndex?'var(--pine-deep)':'var(--ink-soft)')+';font-weight:'+(oi===qq.correctIndex?'700':'400')+'">'+String.fromCharCode(65+oi)+'. '+esc(o)+(oi===qq.correctIndex?' ✓':'')+'</div>').join("")
+      + '<div style="font-size:15px;margin-bottom:8px">'+escKeepFormat(qq.question)+'</div>'
+      + qq.options.map((o,oi)=>'<div class="sans" style="font-size:13.5px;padding:3px 0;color:'+(oi===qq.correctIndex?'var(--pine-deep)':'var(--ink-soft)')+';font-weight:'+(oi===qq.correctIndex?'700':'400')+'">'+String.fromCharCode(65+oi)+'. '+escKeepFormat(o)+(oi===qq.correctIndex?' ✓':'')+'</div>').join("")
       + '<div class="note-text">'+esc(qq.explanation)+'</div></div>'
     ).join("") + '</div>'
   + '<button class="btn btn-primary" id="saveQuizBtn" style="width:100%;justify-content:center;padding:12px 0;margin-top:16px">Lưu & lấy link chia sẻ</button>';
@@ -409,7 +414,7 @@ function viewQuiz(){
   const low = q.timeLimitMin && p.remaining<=60;
   const opts = qq.options.map((o,oi)=>{
     let c="option"; if(p.picked!==null){ if(oi===qq.correctIndex) c+=" correct"; else if(oi===p.picked) c+=" wrong"; }
-    return '<button class="'+c+'" '+(p.picked!==null?'disabled':'')+' data-action="pickOpt" data-oi="'+oi+'"><span class="opt-letter">'+String.fromCharCode(65+oi)+'.</span><span>'+esc(o)+'</span></button>';
+    return '<button class="'+c+'" '+(p.picked!==null?'disabled':'')+' data-action="pickOpt" data-oi="'+oi+'"><span class="opt-letter">'+String.fromCharCode(65+oi)+'.</span><span>'+escKeepFormat(o)+'</span></button>';
   }).join("");
   return '<div style="max-width:560px;margin:0 auto">'
   + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
@@ -417,7 +422,7 @@ function viewQuiz(){
   + (q.timeLimitMin ? '<div class="timer'+(low?' low':'')+'">⏱ '+fmtTime(p.remaining)+'</div>' : '') + '</div>'
   + '<div class="dots">'+dots+'</div>'
   + '<div class="card" style="padding:22px;margin-top:14px">'
-  + '<div style="font-size:17px;line-height:1.5;margin-bottom:16px">'+esc(qq.question)+'</div>' + opts
+  + '<div style="font-size:17px;line-height:1.5;margin-bottom:16px">'+escKeepFormat(qq.question)+'</div>' + opts
   + (p.picked!==null ? '<div class="explain"><b>'+(p.picked===qq.correctIndex?"Chính xác! ":"Chưa đúng. ")+'</b>'+esc(qq.explanation)+'</div>' : '')
   + (p.picked!==null ? '<button class="btn btn-primary" id="nextBtn" style="width:100%;justify-content:center;padding:11px 0;margin-top:16px">'+(isLast?"Nộp bài":"Câu tiếp theo")+' ›</button>' : '')
   + '</div></div>';
@@ -439,9 +444,9 @@ function viewDone(){
 function wrongCard(w){
   const meta = SKILL_META[w.skill] || SKILL_META["so-lieu"];
   return '<div class="margin-note"><span class="badge '+meta.badge+'">'+meta.label+'</span>'
-  + '<div class="margin-q">'+esc(w.question)+'</div>'
-  + '<div class="margin-row"><span class="x-mark">✗</span><span>Em chọn: <span class="strike">'+esc(w.options[w.chosenIndex] ?? "(không chọn)")+'</span></span></div>'
-  + '<div class="margin-row"><span class="check-mark">✓</span><span>Đáp án đúng: <b>'+esc(w.options[w.correctIndex])+'</b></span></div>'
+  + '<div class="margin-q">'+escKeepFormat(w.question)+'</div>'
+  + '<div class="margin-row"><span class="x-mark">✗</span><span>Em chọn: <span class="strike">'+escKeepFormat(w.options[w.chosenIndex] ?? "(không chọn)")+'</span></span></div>'
+  + '<div class="margin-row"><span class="check-mark">✓</span><span>Đáp án đúng: <b>'+escKeepFormat(w.options[w.correctIndex])+'</b></span></div>'
   + '<div class="note-text"><span class="diag">'+esc(meta.diag)+'</span><br>'+esc(w.explanation)+'</div></div>';
 }
 
@@ -467,7 +472,7 @@ function viewDashboard(){
 
   const missedHtml = topMissed.length ? '<div style="margin-top:26px"><div class="eyebrow">Câu sai nhiều nhất cả lớp</div>' + topMissed.map(m=>
     '<div class="margin-note"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><span class="badge '+SKILL_META[m.skill].badge+'">'+SKILL_META[m.skill].label+'</span><span class="sans" style="font-size:12.5px;color:var(--clay);font-weight:700">'+m.count+' em sai</span></div>'
-    + '<div class="margin-q">'+esc(m.question)+'</div><div class="note-text"><span class="diag">'+esc(SKILL_META[m.skill].diag)+'</span><br>'+esc(m.explanation)+'</div></div>'
+    + '<div class="margin-q">'+escKeepFormat(m.question)+'</div><div class="note-text"><span class="diag">'+esc(SKILL_META[m.skill].diag)+'</span><br>'+esc(m.explanation)+'</div></div>'
   ).join("") + '</div>' : '';
 
   let detailModal = "";
