@@ -139,7 +139,33 @@ async function gasPost(body){
 async function getQuiz(id){ try{ const d = await gasGet({action:"getQuiz", id}); return d && d.id ? d : null; }catch(e){ return null; } }
 async function saveQuiz(quiz){ const r = await gasPost({action:"saveQuiz", quiz}); if(!r || r.error) throw new Error("Không lưu được đề: "+(r&&r.error||"?")); }
 async function listQuizzes(){ try{ const d = await gasGet({action:"listQuizzes"}); const l = Array.isArray(d)?d:[]; l.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)); return l; }catch(e){ return []; } }
-async function saveAttempt(att){ const r = await gasPost({action:"saveAttempt", attempt:att}); if(!r || r.error) throw new Error("Không lưu được điểm: "+(r&&r.error||"?")); }
+/* Luu diem: thu lai toi 4 lan, va giu ban sao tren may hoc sinh (localStorage) cho toi khi server xac nhan da nhan,
+   de mang yeu / chuyen app / dong trang giua chung khong lam mat diem. Ban sao se tu gui lai o lan mo trang sau. */
+const PENDING_KEY = "pendingAttempts_v1";
+function pendingLoad(){ try{ return JSON.parse(localStorage.getItem(PENDING_KEY)||"[]"); }catch(e){ return []; } }
+function pendingSave(list){ try{ localStorage.setItem(PENDING_KEY, JSON.stringify(list)); }catch(e){} }
+function pendingAdd(att){ const l = pendingLoad().filter(a=>a.id!==att.id); l.push(att); pendingSave(l); }
+function pendingRemove(id){ pendingSave(pendingLoad().filter(a=>a.id!==id)); }
+const sleep = ms => new Promise(r=>setTimeout(r, ms));
+async function postAttemptOnce(att){
+  const r = await gasPost({action:"saveAttempt", attempt:att});
+  if(!r || r.error) throw new Error("Không lưu được điểm: "+(r&&r.error||"?"));
+}
+async function saveAttempt(att, tries){
+  tries = tries || 4;
+  pendingAdd(att);
+  let lastErr;
+  for(let i=0;i<tries;i++){
+    try{ await postAttemptOnce(att); pendingRemove(att.id); return; }
+    catch(e){ lastErr = e; if(i<tries-1) await sleep(1500*(i+1)); }
+  }
+  throw lastErr;
+}
+async function flushPendingAttempts(){      // gui lai cac bai chua gui duoc o lan truoc (neu co)
+  for(const att of pendingLoad()){
+    try{ await postAttemptOnce(att); pendingRemove(att.id); }catch(e){ break; }
+  }
+}
 async function listAttempts(quizId){ try{ const d = await gasGet({action:"listAttempts", quizId}); const l = Array.isArray(d)?d:[]; l.sort((a,b)=>(b.submittedAt||0)-(a.submittedAt||0)); return l; }catch(e){ return []; } }
 async function getSettings(){ try{ const d = await gasGet({action:"getSettings"}); return d && Object.keys(d).length ? d : null; }catch(e){ return null; } }
 async function saveSettings(s){ const r = await gasPost({action:"saveSettings", settings:s}); if(!r || r.error) throw new Error("Không lưu được cài đặt: "+(r&&r.error||"?")); }
@@ -207,14 +233,16 @@ function on(sel, ev, fn){ app.querySelectorAll(sel).forEach(el=>el.addEventListe
 
 /* ================= INIT ================= */
 (async function init(){
+  flushPendingAttempts();
   try{
     const params = new URLSearchParams(window.location.search);
     const qParam = params.get("quiz");
-    S.quizzes = await listQuizzes();
     if(qParam){
+      // Mo bang link ?quiz=...: chi tai DUNG de can lam (nhanh), khong tai ca danh sach de (nang ~450KB, cham tren dien thoai)
       const q = await getQuiz(qParam.toUpperCase());
       if(q){ S.activeQuiz = q; S.view = "join"; render(); return; }
     }
+    S.quizzes = await listQuizzes();
     S.view = "home"; render();
   }catch(e){ S.error = "Không tải được dữ liệu."; S.view="home"; render(); }
 })();
@@ -435,7 +463,7 @@ function viewDone(){
   + '<div class="eyebrow">Đã nộp bài</div><div class="mono" style="font-size:44px;font-weight:700;color:var(--pine-deep);margin:6px 0">'+att.score+'/'+att.total+'</div>'
   + '<div class="'+pctClass(att.percent)+'" style="font-size:16px">'+att.percent+'%</div>'
   + '<p class="hint" style="margin-top:10px">'+esc(att.studentName)+' · '+esc(att.studentClass)+'</p>'
-  + (att._saveFailed ? '<div class="error" style="text-align:left;margin-top:14px">Không kết nối được để lưu điểm vào sổ giáo viên. Điểm trên vẫn đúng, hãy chụp màn hình này lại.</div>' : '')
+  + (att._saveFailed ? '<div class="error" style="text-align:left;margin-top:14px">Chưa gửi được điểm đến thầy cô (mạng yếu hoặc mất kết nối). Điểm trên vẫn đúng. Bấm «Gửi lại điểm» khi có mạng tốt; nếu vẫn lỗi, hãy chụp màn hình này gửi thầy cô — điểm cũng được lưu tạm trên máy này và sẽ tự gửi lại lần sau bạn mở trang.</div><button class="btn btn-primary" id="retrySaveBtn" data-action="retrySave" style="margin-top:12px">Gửi lại điểm</button>' : '')
   + '<button class="btn" style="margin-top:16px" data-action="home">Về trang chủ</button></div>'
   + (wrong.length ? '<div style="margin-top:22px"><div class="eyebrow">Câu sai của bạn ('+wrong.length+')</div>' + wrong.map(wrongCard).join("") + '</div>' : '')
   + '</div>';
@@ -519,6 +547,14 @@ function bindEvents(){
     else if(action==="backToCreate"){ S.view="create"; render(); }
     else if(action==="showDetail"){ S.dashboard.detail = el.dataset.key; render(); }
     else if(action==="closeDetail"){ S.dashboard.detail = null; render(); }
+    else if(action==="retrySave"){
+      const att = S.quizPlay && S.quizPlay.lastAttempt; if(!att) return;
+      el.disabled = true; el.textContent = "Đang gửi…";
+      const { _saveFailed, ...clean } = att;
+      try{ await saveAttempt(clean, 3); S.quizPlay.lastAttempt = clean; }
+      catch(e){ S.quizPlay.lastAttempt = { ...clean, _saveFailed:true }; }
+      render();
+    }
   };
   app.oninput = (e) => {
     const id = e.target.id;
